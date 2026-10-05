@@ -295,24 +295,24 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
-    await guild.roles.fetch();
+    const roles = await guild.roles.fetch();
 
     const mentionMatch = normalizedReference.match(/^<@&(?<roleId>\d+)>$/)?.groups?.roleId;
     if (mentionMatch) {
-      const directMentionMatch = guild.roles.cache.get(mentionMatch);
+      const directMentionMatch = roles.get(mentionMatch) ?? guild.roles.cache.get(mentionMatch);
       if (directMentionMatch) {
         return directMentionMatch.id;
       }
     }
 
-    const directMatch = guild.roles.cache.get(normalizedReference);
+    const directMatch = roles.get(normalizedReference) ?? guild.roles.cache.get(normalizedReference);
     if (directMatch) {
       return directMatch.id;
     }
 
-    const nameMatch = guild.roles.cache.find(
+    const nameMatch = roles.find(
       (role) => role.name.trim().toLowerCase() === normalizedReference.toLowerCase(),
-    );
+    ) ?? guild.roles.cache.find((role) => role.name.trim().toLowerCase() === normalizedReference.toLowerCase());
 
     if (!nameMatch) {
       this.logger.warn(
