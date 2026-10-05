@@ -72,7 +72,7 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
         await this.assignUnverifiedRole(member);
         await this.publishVerificationMessage(member);
       } catch (error) {
-        this.logger.error('Failed to send verification message on member join', error as Error);
+        this.logger.error('Failed to send verification DM on member join', error as Error);
       }
     });
 
@@ -111,11 +111,11 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('Registered global slash commands.');
   }
 
-  private async publishVerificationMessage(member?: GuildMember) {
+  private async publishVerificationMessage(member: GuildMember) {
     const message = new EmbedBuilder()
       .setTitle('Server Verification')
       .setDescription(
-        `Welcome${member ? `, ${member.displayName}` : ''}!\n\nTo access the server, you need a valid access code.\n\nYour code can only be used once.`,
+        `Welcome, ${member.displayName}!\n\nTo access the server, you need a valid access code.\n\nYour code can only be used once.`,
       )
       .setColor(0x5865f2);
 
@@ -126,23 +126,7 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
 
-    const guild = member?.guild ?? this.client.guilds.cache.first();
-    if (!guild) {
-      return;
-    }
-
-    await guild.channels.fetch();
-
-    const channel = guild.channels.cache.find(
-      (candidate) => candidate.isTextBased() && candidate.name === 'welcome',
-    );
-
-    if (!channel || !channel.isTextBased() || !('send' in channel)) {
-      this.logger.warn(`Could not find a text channel named "welcome" in guild ${guild.name}.`);
-      return;
-    }
-
-    await channel.send({
+    await member.send({
       embeds: [message],
       components: [row],
     });
@@ -230,7 +214,12 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
 
     if (interaction.inGuild() && VERIFIED_ROLE_ID) {
       try {
-        const member = await interaction.guild.members.fetch(interaction.user.id);
+        const guild = interaction.guild;
+        if (!guild) {
+          return;
+        }
+
+        const member = await guild.members.fetch(interaction.user.id);
         await member.roles.add(VERIFIED_ROLE_ID);
         if (UNVERIFIED_ROLE_ID) {
           await member.roles.remove(UNVERIFIED_ROLE_ID);
