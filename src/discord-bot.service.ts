@@ -22,6 +22,8 @@ import { PrismaService } from './prisma.service.js';
 const VERIFY_BUTTON_ID = 'verify_access_button';
 const VERIFY_MODAL_ID = 'verify_access_modal';
 const VERIFY_INPUT_ID = 'access_code';
+const VERIFIED_ROLE_ID = process.env.DISCORD_VERIFIED_ROLE_ID;
+const UNVERIFIED_ROLE_ID = process.env.DISCORD_UNVERIFIED_ROLE_ID;
 const GENERATE_COMMAND = new SlashCommandBuilder()
   .setName('generate-code')
   .setDescription('Generate one or more access codes')
@@ -67,6 +69,7 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
 
     this.client.on(Events.GuildMemberAdd, async (member) => {
       try {
+        await this.assignUnverifiedRole(member);
         await this.publishVerificationMessage(member);
       } catch (error) {
         this.logger.error('Failed to send verification message on member join', error as Error);
@@ -145,6 +148,18 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  private async assignUnverifiedRole(member: GuildMember) {
+    if (!UNVERIFIED_ROLE_ID) {
+      return;
+    }
+
+    try {
+      await member.roles.add(UNVERIFIED_ROLE_ID);
+    } catch (error) {
+      this.logger.warn(`Unverified role could not be assigned for user ${member.user.id}.`, error as Error);
+    }
+  }
+
   private async handleInteraction(interaction: Interaction) {
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'generate-code') {
@@ -213,8 +228,20 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    if (interaction.inGuild() && VERIFIED_ROLE_ID) {
+      try {
+        const member = await interaction.guild.members.fetch(interaction.user.id);
+        await member.roles.add(VERIFIED_ROLE_ID);
+        if (UNVERIFIED_ROLE_ID) {
+          await member.roles.remove(UNVERIFIED_ROLE_ID);
+        }
+      } catch (error) {
+        this.logger.warn(`Verified role could not be assigned for user ${interaction.user.id}.`, error as Error);
+      }
+    }
+
     await interaction.reply({
-      content: 'Verified',
+      content: VERIFIED_ROLE_ID ? 'Verified and access role granted.' : 'Verified.',
       ephemeral: true,
     });
   }
