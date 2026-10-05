@@ -213,13 +213,12 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    if (interaction.inGuild()) {
-      try {
-        const guild = interaction.guild;
-        if (!guild) {
-          return;
-        }
-
+    try {
+      const guildId = process.env.DISCORD_GUILD_ID;
+      if (!guildId) {
+        this.logger.warn('DISCORD_GUILD_ID is not set; verified role cannot be assigned.');
+      } else {
+        const guild = await this.client.guilds.fetch(guildId);
         const member = await guild.members.fetch(interaction.user.id);
         const verifiedRoleId = await this.resolveRoleId(guild, VERIFIED_ROLE_ID);
         const unverifiedRoleId = await this.resolveRoleId(guild, UNVERIFIED_ROLE_ID);
@@ -233,9 +232,9 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
         if (unverifiedRoleId) {
           await member.roles.remove(unverifiedRoleId);
         }
-      } catch (error) {
-        this.logger.warn(`Verified role could not be assigned for user ${interaction.user.id}.`, error as Error);
       }
+    } catch (error) {
+      this.logger.warn(`Verified role could not be assigned for user ${interaction.user.id}.`, error as Error);
     }
 
     await interaction.reply({
