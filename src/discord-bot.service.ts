@@ -314,6 +314,12 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
       (role) => role.name.trim().toLowerCase() === normalizedReference.toLowerCase(),
     );
 
+    if (!nameMatch) {
+      this.logger.warn(
+        `Role "${normalizedReference}" was not found in guild ${guild.name}. Roles seen: ${guild.roles.cache.map((role) => role.name).join(', ')}`,
+      );
+    }
+
     return nameMatch?.id ?? null;
   }
 }
