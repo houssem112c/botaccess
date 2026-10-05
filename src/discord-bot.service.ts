@@ -7,6 +7,7 @@ import {
     EmbedBuilder,
     Events,
     GatewayIntentBits,
+    GuildMember,
     Interaction,
     ModalBuilder,
     REST,
@@ -36,7 +37,7 @@ const GENERATE_COMMAND = new SlashCommandBuilder()
 export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DiscordBotService.name);
   private readonly client = new Client({
-    intents: [GatewayIntentBits.Guilds],
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   });
 
   constructor(private readonly prisma: PrismaService) {}
@@ -62,7 +63,14 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
   private registerEventHandlers() {
     this.client.once(Events.ClientReady, async () => {
       this.logger.log(`Logged in as ${this.client.user?.tag ?? 'unknown bot'}`);
-      await this.publishVerificationMessage();
+    });
+
+    this.client.on(Events.GuildMemberAdd, async (member) => {
+      try {
+        await this.publishVerificationMessage(member);
+      } catch (error) {
+        this.logger.error('Failed to send verification message on member join', error as Error);
+      }
     });
 
     this.client.on(Events.InteractionCreate, async (interaction) => {
@@ -100,11 +108,11 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('Registered global slash commands.');
   }
 
-  private async publishVerificationMessage() {
+  private async publishVerificationMessage(member?: GuildMember) {
     const message = new EmbedBuilder()
       .setTitle('Server Verification')
       .setDescription(
-        'Welcome!\n\nTo access the server, you need a valid access code.\n\nYour code can only be used once.',
+        `Welcome${member ? `, ${member.displayName}` : ''}!\n\nTo access the server, you need a valid access code.\n\nYour code can only be used once.`,
       )
       .setColor(0x5865f2);
 
@@ -115,20 +123,26 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
 
-    for (const guild of this.client.guilds.cache.values()) {
-      const channel = guild.channels.cache.find(
-        (candidate) => candidate.isTextBased() && candidate.name === 'welcome',
-      );
-
-      if (!channel || !channel.isTextBased() || !('send' in channel)) {
-        continue;
-      }
-
-      await channel.send({
-        embeds: [message],
-        components: [row],
-      });
+    const guild = member?.guild ?? this.client.guilds.cache.first();
+    if (!guild) {
+      return;
     }
+
+    await guild.channels.fetch();
+
+    const channel = guild.channels.cache.find(
+      (candidate) => candidate.isTextBased() && candidate.name === 'welcome',
+    );
+
+    if (!channel || !channel.isTextBased() || !('send' in channel)) {
+      this.logger.warn(`Could not find a text channel named "welcome" in guild ${guild.name}.`);
+      return;
+    }
+
+    await channel.send({
+      embeds: [message],
+      components: [row],
+    });
   }
 
   private async handleInteraction(interaction: Interaction) {
