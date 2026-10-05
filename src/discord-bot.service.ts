@@ -133,12 +133,13 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async assignUnverifiedRole(member: GuildMember) {
-    if (!UNVERIFIED_ROLE_ID) {
+    const roleId = await this.resolveRoleId(member.guild, UNVERIFIED_ROLE_ID);
+    if (!roleId) {
       return;
     }
 
     try {
-      await member.roles.add(UNVERIFIED_ROLE_ID);
+      await member.roles.add(roleId);
     } catch (error) {
       this.logger.warn(`Unverified role could not be assigned for user ${member.user.id}.`, error as Error);
     }
@@ -212,7 +213,7 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    if (interaction.inGuild() && VERIFIED_ROLE_ID) {
+    if (interaction.inGuild()) {
       try {
         const guild = interaction.guild;
         if (!guild) {
@@ -220,9 +221,17 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
         }
 
         const member = await guild.members.fetch(interaction.user.id);
-        await member.roles.add(VERIFIED_ROLE_ID);
-        if (UNVERIFIED_ROLE_ID) {
-          await member.roles.remove(UNVERIFIED_ROLE_ID);
+        const verifiedRoleId = await this.resolveRoleId(guild, VERIFIED_ROLE_ID);
+        const unverifiedRoleId = await this.resolveRoleId(guild, UNVERIFIED_ROLE_ID);
+
+        if (verifiedRoleId) {
+          await member.roles.add(verifiedRoleId);
+        } else {
+          this.logger.warn(`Verified role was not found for user ${interaction.user.id}.`);
+        }
+
+        if (unverifiedRoleId) {
+          await member.roles.remove(unverifiedRoleId);
         }
       } catch (error) {
         this.logger.warn(`Verified role could not be assigned for user ${interaction.user.id}.`, error as Error);
@@ -230,7 +239,7 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
     }
 
     await interaction.reply({
-      content: VERIFIED_ROLE_ID ? 'Verified and access role granted.' : 'Verified.',
+      content: 'Verified and access role updated.',
       ephemeral: true,
     });
   }
@@ -269,5 +278,24 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
     };
 
     return `${segment(4)}-${segment(4)}-${segment(4)}`;
+  }
+
+  private async resolveRoleId(guild: GuildMember['guild'], roleReference?: string) {
+    if (!roleReference) {
+      return null;
+    }
+
+    await guild.roles.fetch();
+
+    const directMatch = guild.roles.cache.get(roleReference);
+    if (directMatch) {
+      return directMatch.id;
+    }
+
+    const nameMatch = guild.roles.cache.find(
+      (role) => role.name.toLowerCase() === roleReference.toLowerCase(),
+    );
+
+    return nameMatch?.id ?? null;
   }
 }
