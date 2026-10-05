@@ -223,14 +223,24 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
         const verifiedRoleId = await this.resolveRoleId(guild, VERIFIED_ROLE_ID);
         const unverifiedRoleId = await this.resolveRoleId(guild, UNVERIFIED_ROLE_ID);
 
+        if (!verifiedRoleId) {
+          this.logger.warn(`Verified role was not found for user ${interaction.user.id}. Check DISCORD_VERIFIED_ROLE_ID.`);
+        }
+
         if (verifiedRoleId) {
           await member.roles.add(verifiedRoleId);
+          this.logger.log(`Assigned verified role ${verifiedRoleId} to user ${interaction.user.id}.`);
         } else {
-          this.logger.warn(`Verified role was not found for user ${interaction.user.id}.`);
+          await interaction.reply({
+            content: 'Verified code accepted, but the verified role could not be found. Check the role name or ID in .env.',
+            ephemeral: true,
+          });
+          return;
         }
 
         if (unverifiedRoleId) {
           await member.roles.remove(unverifiedRoleId);
+          this.logger.log(`Removed unverified role ${unverifiedRoleId} from user ${interaction.user.id}.`);
         }
       }
     } catch (error) {
@@ -280,19 +290,28 @@ export class DiscordBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async resolveRoleId(guild: GuildMember['guild'], roleReference?: string) {
-    if (!roleReference) {
+    const normalizedReference = roleReference?.trim();
+    if (!normalizedReference) {
       return null;
     }
 
     await guild.roles.fetch();
 
-    const directMatch = guild.roles.cache.get(roleReference);
+    const mentionMatch = normalizedReference.match(/^<@&(?<roleId>\d+)>$/)?.groups?.roleId;
+    if (mentionMatch) {
+      const directMentionMatch = guild.roles.cache.get(mentionMatch);
+      if (directMentionMatch) {
+        return directMentionMatch.id;
+      }
+    }
+
+    const directMatch = guild.roles.cache.get(normalizedReference);
     if (directMatch) {
       return directMatch.id;
     }
 
     const nameMatch = guild.roles.cache.find(
-      (role) => role.name.toLowerCase() === roleReference.toLowerCase(),
+      (role) => role.name.trim().toLowerCase() === normalizedReference.toLowerCase(),
     );
 
     return nameMatch?.id ?? null;
